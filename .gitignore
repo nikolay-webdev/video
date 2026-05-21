@@ -204,14 +204,14 @@ cython_debug/
 tempCodeRunnerFile.py
 
 # Face Lock Assistant runtime/user data
-face-lock-assistant/.venv/
-face-lock-assistant/logs/*
-!face-lock-assistant/logs/.gitkeep
-face-lock-assistant/snapshots/*
-!face-lock-assistant/snapshots/.gitkeep
-face-lock-assistant/known_faces/*.jpg
-face-lock-assistant/known_faces/*.jpeg
-face-lock-assistant/known_faces/*.png
+.venv/
+logs/*
+!logs/.gitkeep
+snapshots/*
+!snapshots/.gitkeep
+known_faces/*.jpg
+known_faces/*.jpeg
+known_faces/*.png
 
 # Ruff stuff:
 .ruff_cache/
