@@ -112,15 +112,16 @@ def get_known_face_paths() -> list[Path]:
 
 
 def open_camera() -> cv2.VideoCapture | None:
+    camera_index = config.get_camera_index()
     backends = [
         ("DirectShow", cv2.CAP_DSHOW),
         ("Default", cv2.CAP_ANY),
     ]
 
     for backend_name, backend in backends:
-        camera = cv2.VideoCapture(config.CAMERA_INDEX, backend)
+        camera = cv2.VideoCapture(camera_index, backend)
         if camera.isOpened():
-            print(f"Camera opened with backend: {backend_name}")
+            print(f"Camera opened with backend: {backend_name}, index: {camera_index}")
             return camera
 
         camera.release()
@@ -128,7 +129,7 @@ def open_camera() -> cv2.VideoCapture | None:
     print(
         "ERROR: Camera is not available.\n"
         f"Check camera connection, close Teams/Zoom/browser camera tabs, "
-        f"and check CAMERA_INDEX={config.CAMERA_INDEX}."
+        f"and check camera index={camera_index}."
     )
     return None
 
@@ -391,7 +392,7 @@ def run_self_test() -> int:
     print(f"Environment OK: {sys.executable}")
     print(f"Known faces dir: {KNOWN_FACES_DIR}")
     print(f"Known face photos: {len(get_known_face_paths())}")
-    print(f"Camera index: {config.CAMERA_INDEX}")
+    print(f"Camera index: {config.get_camera_index()}")
     print(f"Detector backend: {config.DETECTOR_BACKEND}")
     print("Self-test does not lock Windows and does not save snapshots.")
 

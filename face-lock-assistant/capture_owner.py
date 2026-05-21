@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from time import sleep
 
 import cv2
 
 import config
+import scan_owner
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -16,15 +18,16 @@ FRAME_READ_RETRY_DELAY_SECONDS = 0.2
 
 
 def open_camera() -> cv2.VideoCapture | None:
+    camera_index = config.get_camera_index()
     backends = [
         ("DirectShow", cv2.CAP_DSHOW),
         ("Default", cv2.CAP_ANY),
     ]
 
     for backend_name, backend in backends:
-        camera = cv2.VideoCapture(config.CAMERA_INDEX, backend)
+        camera = cv2.VideoCapture(camera_index, backend)
         if camera.isOpened():
-            print(f"Camera opened with backend: {backend_name}")
+            print(f"Camera opened with backend: {backend_name}, index: {camera_index}")
             return camera
 
         camera.release()
@@ -32,7 +35,7 @@ def open_camera() -> cv2.VideoCapture | None:
     print(
         "ERROR: Camera is not available.\n"
         f"Check camera connection, close Teams/Zoom/browser camera tabs, "
-        f"and check CAMERA_INDEX={config.CAMERA_INDEX}."
+        f"and check camera index={camera_index}."
     )
     return None
 
@@ -104,4 +107,9 @@ def run() -> int:
 
 
 if __name__ == "__main__":
+    if "--single" not in sys.argv:
+        print("Starting multi-step owner face scan.")
+        print("Use 'python capture_owner.py --single' for the old one-photo mode.")
+        raise SystemExit(scan_owner.run())
+
     raise SystemExit(run())
