@@ -197,6 +197,14 @@ def save_unknown_snapshot(frame) -> Path | None:
     return None
 
 
+def can_save_unknown_snapshot(last_snapshot_at: float | None) -> bool:
+    if last_snapshot_at is None:
+        return True
+
+    seconds_since_last_snapshot = time.monotonic() - last_snapshot_at
+    return seconds_since_last_snapshot >= config.UNKNOWN_FACE_SNAPSHOT_COOLDOWN_SECONDS
+
+
 def print_status(status: str, absent_seconds: float, snapshot_path: Path | None = None) -> None:
     timestamp = datetime.now().strftime("%H:%M:%S")
     message = f"[{timestamp}] {status} | absent: {absent_seconds:.1f}s"
@@ -217,6 +225,7 @@ def run() -> int:
         return 1
 
     owner_last_seen_at = time.monotonic()
+    last_unknown_snapshot_at = None
     lock_already_requested = False
 
     print("Face Lock Assistant started. Press Ctrl+C to stop.")
@@ -244,8 +253,12 @@ def run() -> int:
                 lock_already_requested = False
             else:
                 status = "UNKNOWN_FACE"
-                snapshot_path = save_unknown_snapshot(frame)
-                logging.warning("Unknown face detected. Snapshot: %s", snapshot_path or "disabled")
+                if can_save_unknown_snapshot(last_unknown_snapshot_at):
+                    snapshot_path = save_unknown_snapshot(frame)
+                    last_unknown_snapshot_at = time.monotonic()
+                    logging.warning("Unknown face detected. Snapshot: %s", snapshot_path or "disabled")
+                else:
+                    logging.warning("Unknown face detected. Snapshot skipped by cooldown.")
 
             absent_seconds = time.monotonic() - owner_last_seen_at
             print_status(status, absent_seconds, snapshot_path)
@@ -257,6 +270,8 @@ def run() -> int:
                 print("Owner absent too long. Locking Windows screen.")
                 lock_windows_screen()
                 lock_already_requested = True
+                print(f"Paused for {config.PAUSE_SECONDS_AFTER_LOCK}s after locking.")
+                time.sleep(config.PAUSE_SECONDS_AFTER_LOCK)
 
             time.sleep(config.CHECK_INTERVAL_SECONDS)
     except KeyboardInterrupt:
