@@ -12,6 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_VENV_PYTHON = BASE_DIR / ".venv" / "Scripts" / "python.exe"
 CHECK_ENV_FLAG = "--check-env"
 SELF_TEST_FLAG = "--self-test"
+DIAGNOSE_DETECTORS_FLAG = "--diagnose-detectors"
 
 
 def relaunch_with_project_venv() -> None:
@@ -61,12 +62,12 @@ SNAPSHOTS_DIR = BASE_DIR / "snapshots"
 KNOWN_FACE_PATH = BASE_DIR / config.KNOWN_FACE_PATH
 APP_LOG_PATH = LOGS_DIR / "app.log"
 
-DETECTOR_BACKEND = "opencv"
 MODEL_NAME = "SFace"
 DISTANCE_METRIC = "cosine"
 MIN_FACE_CONFIDENCE = 0.5
 FRAME_READ_RETRIES = 5
 FRAME_READ_RETRY_DELAY_SECONDS = 0.2
+DIAGNOSTIC_DETECTOR_BACKENDS = ["opencv", "ssd", "mtcnn", "retinaface"]
 
 
 def setup_directories() -> None:
@@ -133,10 +134,14 @@ def lock_windows_screen() -> None:
 
 
 def extract_detected_faces(frame) -> list[dict]:
+    return extract_detected_faces_with_backend(frame, config.DETECTOR_BACKEND)
+
+
+def extract_detected_faces_with_backend(frame, detector_backend: str) -> list[dict]:
     try:
         faces = DeepFace.extract_faces(
             img_path=frame,
-            detector_backend=DETECTOR_BACKEND,
+            detector_backend=detector_backend,
             enforce_detection=False,
         )
     except Exception as error:
@@ -171,7 +176,7 @@ def is_owner_present(faces: list[dict]) -> bool:
                 img1_path=face_image,
                 img2_path=str(KNOWN_FACE_PATH),
                 model_name=MODEL_NAME,
-                detector_backend=DETECTOR_BACKEND,
+                detector_backend=config.DETECTOR_BACKEND,
                 distance_metric=DISTANCE_METRIC,
                 enforce_detection=False,
             )
@@ -288,6 +293,7 @@ def run_self_test() -> int:
     print(f"Environment OK: {sys.executable}")
     print(f"Known face path: {KNOWN_FACE_PATH}")
     print(f"Camera index: {config.CAMERA_INDEX}")
+    print(f"Detector backend: {config.DETECTOR_BACKEND}")
     print("Self-test does not lock Windows and does not save snapshots.")
 
     setup_directories()
@@ -301,25 +307,78 @@ def run_self_test() -> int:
         return 1
 
     try:
+        deadline = time.monotonic() + config.SELF_TEST_SECONDS
+        frame_count = 0
+        max_faces_detected = 0
+        last_frame_shape = None
+        final_status = "NO_FACE"
+
+        while time.monotonic() < deadline:
+            frame_ok, frame = read_frame(camera)
+            if not frame_ok:
+                print("ERROR: Failed to read a test frame from camera.")
+                return 1
+
+            frame_count += 1
+            height, width = frame.shape[:2]
+            last_frame_shape = (width, height)
+
+            faces = extract_detected_faces(frame)
+            max_faces_detected = max(max_faces_detected, len(faces))
+
+            if faces and is_owner_present(faces):
+                final_status = "OWNER_PRESENT"
+                break
+
+            if faces:
+                final_status = "UNKNOWN_FACE"
+
+            time.sleep(config.CHECK_INTERVAL_SECONDS)
+
+        if last_frame_shape is None:
+            print("ERROR: No test frames were read.")
+            return 1
+
+        width, height = last_frame_shape
+        print(f"Camera frame OK: {width}x{height}")
+        print(f"Frames checked: {frame_count}")
+        print(f"Max detected faces: {max_faces_detected}")
+        print(f"Recognition status: {final_status}")
+
+        print("Self-test finished.")
+        return 0
+    finally:
+        camera.release()
+        cv2.destroyAllWindows()
+
+
+def run_detector_diagnostics() -> int:
+    print("Detector diagnostics started.")
+    print("This mode does not lock Windows and does not save snapshots.")
+
+    setup_directories()
+    setup_logging()
+
+    camera = open_camera()
+    if camera is None:
+        return 1
+
+    try:
         frame_ok, frame = read_frame(camera)
         if not frame_ok:
-            print("ERROR: Failed to read a test frame from camera.")
+            print("ERROR: Failed to read a diagnostic frame from camera.")
             return 1
 
         height, width = frame.shape[:2]
         print(f"Camera frame OK: {width}x{height}")
 
-        faces = extract_detected_faces(frame)
-        print(f"Detected faces: {len(faces)}")
+        for backend in DIAGNOSTIC_DETECTOR_BACKENDS:
+            started_at = time.monotonic()
+            faces = extract_detected_faces_with_backend(frame, backend)
+            elapsed = time.monotonic() - started_at
+            print(f"{backend}: faces={len(faces)} time={elapsed:.2f}s")
 
-        if not faces:
-            print("Recognition status: NO_FACE")
-        elif is_owner_present(faces):
-            print("Recognition status: OWNER_PRESENT")
-        else:
-            print("Recognition status: UNKNOWN_FACE")
-
-        print("Self-test finished.")
+        print("Detector diagnostics finished.")
         return 0
     finally:
         camera.release()
@@ -329,5 +388,8 @@ def run_self_test() -> int:
 if __name__ == "__main__":
     if SELF_TEST_FLAG in sys.argv:
         raise SystemExit(run_self_test())
+
+    if DIAGNOSE_DETECTORS_FLAG in sys.argv:
+        raise SystemExit(run_detector_diagnostics())
 
     raise SystemExit(run())
