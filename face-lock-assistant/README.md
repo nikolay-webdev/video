@@ -162,14 +162,18 @@ DETECTOR_BACKEND = "mtcnn"
 SELF_TEST_SECONDS = 5
 SAVE_UNKNOWN_FACE_SNAPSHOT = True
 UNKNOWN_FACE_SNAPSHOT_COOLDOWN_SECONDS = 10
-PAUSE_SECONDS_AFTER_LOCK = 20
+PAUSE_SECONDS_AFTER_LOCK = 1800
+LOCK_STATE_CHECK_INTERVAL_SECONDS = 5
+LOCKED_STATUS_PRINT_INTERVAL_SECONDS = 10
 KNOWN_FACE_PATH = "known_faces/nikolay.jpg"
 ```
 
 Что означают новые настройки:
 
 - `UNKNOWN_FACE_SNAPSHOT_COOLDOWN_SECONDS`: минимальная пауза между снимками неизвестного лица.
-- `PAUSE_SECONDS_AFTER_LOCK`: пауза после вызова блокировки Windows.
+- `PAUSE_SECONDS_AFTER_LOCK`: максимальное ожидание после блокировки Windows. `1800` секунд = 30 минут.
+- `LOCK_STATE_CHECK_INTERVAL_SECONDS`: как часто проверять, разблокировал ли пользователь Windows вручную.
+- `LOCKED_STATUS_PRINT_INTERVAL_SECONDS`: как часто печатать `LOCKED_WAIT` после блокировки.
 - `DETECTOR_BACKEND`: детектор лиц DeepFace. На текущем ноутбуке диагностика показала, что `mtcnn` видит лицо лучше, чем `opencv` и `ssd`.
 - `SELF_TEST_SECONDS`: сколько секунд длится безопасная самопроверка.
 - `--self-test`: безопасный тестовый режим, который не блокирует Windows и не сохраняет снимки.
