@@ -105,6 +105,22 @@ python main.py
 
 Остановить программу можно сочетанием `Ctrl+C`.
 
+## Запуск в VS Code
+
+Откройте в VS Code именно папку проекта:
+
+```text
+C:\Users\Student\Downloads\Projects\video_ai\video\face-lock-assistant
+```
+
+В проект добавлены настройки `.vscode`, которые указывают VS Code использовать Python из `.venv`.
+
+Если кнопка запуска все равно использует глобальный Python, откройте командную палитру `Ctrl+Shift+P`, выберите `Python: Select Interpreter` и укажите:
+
+```text
+.\.venv\Scripts\python.exe
+```
+
 ## Настройки
 
 Настройки находятся в `config.py`:

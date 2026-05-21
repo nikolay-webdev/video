@@ -2,17 +2,59 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from time import sleep
 
-import cv2
-from deepface import DeepFace
+
+BASE_DIR = Path(__file__).resolve().parent
+PROJECT_VENV_PYTHON = BASE_DIR / ".venv" / "Scripts" / "python.exe"
+
+
+def relaunch_with_project_venv() -> None:
+    if not PROJECT_VENV_PYTHON.exists():
+        return
+
+    current_python = Path(sys.executable).resolve()
+    project_python = PROJECT_VENV_PYTHON.resolve()
+
+    if current_python == project_python:
+        return
+
+    print(f"Restarting with project Python: {project_python}", flush=True)
+    completed_process = subprocess.run(
+        [str(project_python), str(Path(__file__).resolve()), *sys.argv[1:]],
+        check=False,
+    )
+    raise SystemExit(completed_process.returncode)
+
+
+relaunch_with_project_venv()
+
+try:
+    import cv2
+    from deepface import DeepFace
+except ModuleNotFoundError as error:
+    missing_module = error.name or "unknown"
+    print(
+        f"ERROR: Python module '{missing_module}' is not installed.\n"
+        "Run the script with the project virtual environment:\n"
+        f"{PROJECT_VENV_PYTHON} main.py\n"
+        "Or install dependencies into .venv with:\n"
+        f"{PROJECT_VENV_PYTHON} -m pip install -r requirements.txt"
+    )
+    raise SystemExit(1) from error
 
 import config
 
 
-BASE_DIR = Path(__file__).resolve().parent
+if "--check-env" in sys.argv:
+    print(f"Environment OK: {sys.executable}", flush=True)
+    raise SystemExit(0)
+
+
 LOGS_DIR = BASE_DIR / "logs"
 SNAPSHOTS_DIR = BASE_DIR / "snapshots"
 KNOWN_FACE_PATH = BASE_DIR / config.KNOWN_FACE_PATH
@@ -22,6 +64,8 @@ DETECTOR_BACKEND = "opencv"
 MODEL_NAME = "SFace"
 DISTANCE_METRIC = "cosine"
 MIN_FACE_CONFIDENCE = 0.5
+FRAME_READ_RETRIES = 5
+FRAME_READ_RETRY_DELAY_SECONDS = 0.2
 
 
 def setup_directories() -> None:
@@ -50,16 +94,36 @@ def validate_known_face() -> bool:
 
 
 def open_camera() -> cv2.VideoCapture | None:
-    camera = cv2.VideoCapture(config.CAMERA_INDEX)
-    if camera.isOpened():
-        return camera
+    backends = [
+        ("DirectShow", cv2.CAP_DSHOW),
+        ("Default", cv2.CAP_ANY),
+    ]
+
+    for backend_name, backend in backends:
+        camera = cv2.VideoCapture(config.CAMERA_INDEX, backend)
+        if camera.isOpened():
+            print(f"Camera opened with backend: {backend_name}")
+            return camera
+
+        camera.release()
 
     print(
         "ERROR: Camera is not available.\n"
-        f"Check camera connection and CAMERA_INDEX={config.CAMERA_INDEX}."
+        f"Check camera connection, close Teams/Zoom/browser camera tabs, "
+        f"and check CAMERA_INDEX={config.CAMERA_INDEX}."
     )
-    camera.release()
     return None
+
+
+def read_frame(camera: cv2.VideoCapture):
+    for _ in range(FRAME_READ_RETRIES):
+        frame_ok, frame = camera.read()
+        if frame_ok:
+            return True, frame
+
+        sleep(FRAME_READ_RETRY_DELAY_SECONDS)
+
+    return False, None
 
 
 def lock_windows_screen() -> None:
@@ -160,10 +224,13 @@ def run() -> int:
     try:
         while True:
             snapshot_path = None
-            frame_ok, frame = camera.read()
+            frame_ok, frame = read_frame(camera)
             if not frame_ok:
                 logging.error("Failed to read frame from camera.")
-                print("ERROR: Failed to read frame from camera.")
+                print(
+                    "ERROR: Failed to read frame from camera. "
+                    "Close Teams/Zoom/browser camera tabs and try again."
+                )
                 time.sleep(config.CHECK_INTERVAL_SECONDS)
                 continue
 
