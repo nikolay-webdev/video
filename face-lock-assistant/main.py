@@ -63,6 +63,7 @@ import config
 
 LOGS_DIR = BASE_DIR / "logs"
 SNAPSHOTS_DIR = BASE_DIR / "snapshots"
+KNOWN_FACES_DIR = BASE_DIR / config.KNOWN_FACES_DIR
 KNOWN_FACE_PATH = BASE_DIR / config.KNOWN_FACE_PATH
 APP_LOG_PATH = LOGS_DIR / "app.log"
 
@@ -90,14 +91,24 @@ def setup_logging() -> None:
 
 
 def validate_known_face() -> bool:
-    if KNOWN_FACE_PATH.exists():
+    if get_known_face_paths():
         return True
 
     print(
-        "ERROR: Owner photo was not found.\n"
-        f"Put the owner photo here: {KNOWN_FACE_PATH}"
+        "ERROR: Owner photos were not found.\n"
+        f"Put owner photos here: {KNOWN_FACES_DIR}"
     )
     return False
+
+
+def get_known_face_paths() -> list[Path]:
+    image_extensions = ("*.jpg", "*.jpeg", "*.png")
+    paths: list[Path] = []
+
+    for extension in image_extensions:
+        paths.extend(KNOWN_FACES_DIR.glob(extension))
+
+    return sorted(paths)
 
 
 def open_camera() -> cv2.VideoCapture | None:
@@ -158,6 +169,7 @@ def wait_after_lock_until_unlock() -> bool:
 
     wait_started_at = time.monotonic()
     last_status_print_at = None
+    time.sleep(config.LOCK_MIN_WAIT_BEFORE_UNLOCK_CHECK_SECONDS)
 
     while True:
         elapsed_seconds = time.monotonic() - wait_started_at
@@ -208,6 +220,8 @@ def prepare_face_for_verification(face_image):
 
 
 def is_owner_present(faces: list[dict]) -> bool:
+    known_face_paths = get_known_face_paths()
+
     for face in faces:
         face_image = face.get("face")
         if face_image is None:
@@ -215,21 +229,22 @@ def is_owner_present(faces: list[dict]) -> bool:
 
         face_image = prepare_face_for_verification(face_image)
 
-        try:
-            result = DeepFace.verify(
-                img1_path=face_image,
-                img2_path=str(KNOWN_FACE_PATH),
-                model_name=MODEL_NAME,
-                detector_backend=config.DETECTOR_BACKEND,
-                distance_metric=DISTANCE_METRIC,
-                enforce_detection=False,
-            )
-        except Exception as error:
-            logging.exception("Face verification failed: %s", error)
-            continue
+        for known_face_path in known_face_paths:
+            try:
+                result = DeepFace.verify(
+                    img1_path=face_image,
+                    img2_path=str(known_face_path),
+                    model_name=MODEL_NAME,
+                    detector_backend=config.DETECTOR_BACKEND,
+                    distance_metric=DISTANCE_METRIC,
+                    enforce_detection=False,
+                )
+            except Exception as error:
+                logging.exception("Face verification failed for %s: %s", known_face_path, error)
+                continue
 
-        if result.get("verified"):
-            return True
+            if result.get("verified"):
+                return True
 
     return False
 
@@ -271,6 +286,12 @@ def should_print_locked_wait(last_print_at: float | None) -> bool:
     return seconds_since_last_print >= config.LOCKED_STATUS_PRINT_INTERVAL_SECONDS
 
 
+def print_unlock_grace(grace_until: float) -> None:
+    remaining_seconds = max(0.0, grace_until - time.monotonic())
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{timestamp}] UNLOCK_GRACE | remaining: {remaining_seconds:.0f}s")
+
+
 def run() -> int:
     setup_directories()
     setup_logging()
@@ -286,6 +307,8 @@ def run() -> int:
     last_unknown_snapshot_at = None
     last_locked_wait_print_at = None
     lock_already_requested = False
+    unlock_grace_until = 0.0
+    last_unlock_grace_print_at = None
 
     print("Face Lock Assistant started. Press Ctrl+C to stop.")
 
@@ -303,44 +326,55 @@ def run() -> int:
                 continue
 
             faces = extract_detected_faces(frame)
+            now = time.monotonic()
 
             if not faces:
                 status = "NO_FACE"
             elif is_owner_present(faces):
                 status = "OWNER_PRESENT"
-                owner_last_seen_at = time.monotonic()
+                owner_last_seen_at = now
                 last_locked_wait_print_at = None
+                last_unlock_grace_print_at = None
                 lock_already_requested = False
             else:
                 status = "UNKNOWN_FACE"
                 if can_save_unknown_snapshot(last_unknown_snapshot_at):
                     snapshot_path = save_unknown_snapshot(frame)
-                    last_unknown_snapshot_at = time.monotonic()
+                    last_unknown_snapshot_at = now
                     logging.warning("Unknown face detected. Snapshot: %s", snapshot_path or "disabled")
                 else:
                     logging.debug("Unknown face detected. Snapshot skipped by cooldown.")
 
-            absent_seconds = time.monotonic() - owner_last_seen_at
+            absent_seconds = now - owner_last_seen_at
+            unlock_grace_active = now < unlock_grace_until
 
-            if lock_already_requested and status != "OWNER_PRESENT":
+            if unlock_grace_active and status != "OWNER_PRESENT":
+                if should_print_locked_wait(last_unlock_grace_print_at):
+                    print_unlock_grace(unlock_grace_until)
+                    last_unlock_grace_print_at = now
+            elif lock_already_requested and status != "OWNER_PRESENT":
                 if should_print_locked_wait(last_locked_wait_print_at):
                     print_status("LOCKED_WAIT", absent_seconds, snapshot_path)
-                    last_locked_wait_print_at = time.monotonic()
+                    last_locked_wait_print_at = now
             else:
                 print_status(status, absent_seconds, snapshot_path)
 
             if (
                 absent_seconds >= config.ABSENCE_SECONDS_BEFORE_LOCK
                 and not lock_already_requested
+                and not unlock_grace_active
             ):
                 print("Owner absent too long. Locking Windows screen.")
                 lock_windows_screen()
                 lock_already_requested = True
-                last_locked_wait_print_at = time.monotonic()
+                last_locked_wait_print_at = now
                 unlocked = wait_after_lock_until_unlock()
                 if unlocked:
-                    owner_last_seen_at = time.monotonic()
+                    unlocked_at = time.monotonic()
+                    owner_last_seen_at = unlocked_at
+                    unlock_grace_until = unlocked_at + config.UNLOCK_GRACE_SECONDS
                     last_locked_wait_print_at = None
+                    last_unlock_grace_print_at = None
                     lock_already_requested = False
 
             time.sleep(config.CHECK_INTERVAL_SECONDS)
@@ -355,7 +389,8 @@ def run() -> int:
 
 def run_self_test() -> int:
     print(f"Environment OK: {sys.executable}")
-    print(f"Known face path: {KNOWN_FACE_PATH}")
+    print(f"Known faces dir: {KNOWN_FACES_DIR}")
+    print(f"Known face photos: {len(get_known_face_paths())}")
     print(f"Camera index: {config.CAMERA_INDEX}")
     print(f"Detector backend: {config.DETECTOR_BACKEND}")
     print("Self-test does not lock Windows and does not save snapshots.")
