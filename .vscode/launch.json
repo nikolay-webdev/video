@@ -10,10 +10,10 @@
       "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
     },
     {
-      "name": "Capture Owner Photo",
+      "name": "Scan Owner Face",
       "type": "python",
       "request": "launch",
-      "program": "${workspaceFolder}\\capture_owner.py",
+      "program": "${workspaceFolder}\\scan_owner.py",
       "console": "integratedTerminal",
       "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
     }

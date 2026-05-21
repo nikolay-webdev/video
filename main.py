@@ -64,7 +64,6 @@ import config
 LOGS_DIR = BASE_DIR / "logs"
 SNAPSHOTS_DIR = BASE_DIR / "snapshots"
 KNOWN_FACES_DIR = BASE_DIR / config.KNOWN_FACES_DIR
-KNOWN_FACE_PATH = BASE_DIR / config.KNOWN_FACE_PATH
 APP_LOG_PATH = LOGS_DIR / "app.log"
 
 MODEL_NAME = "SFace"
