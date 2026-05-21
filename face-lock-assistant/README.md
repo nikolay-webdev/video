@@ -94,21 +94,16 @@ known_faces/
 
 ## Захват фото через камеру
 
-Можно сделать одно фото владельца отдельным скриптом:
+По умолчанию `capture_owner.py` запускает мастер сканирования лица с овалом и подсказками:
 
 ```powershell
 python capture_owner.py
 ```
 
-Откроется окно камеры:
+Если нужен старый режим одного фото:
 
-- `Space` — сохранить текущий кадр;
-- `Q` или `Esc` — выйти без сохранения.
-
-По умолчанию снимок сохраняется как:
-
-```text
-known_faces/nikolay.jpg
+```powershell
+python capture_owner.py --single
 ```
 
 Если появляется ошибка чтения кадра, закройте Teams, Zoom, браузерные вкладки с камерой и другие программы, которые могут использовать веб-камеру.
@@ -129,6 +124,10 @@ python scan_owner.py
 - повернуть голову немного влево;
 - повернуть голову немного вправо;
 - слегка поднять голову;
+- переместить лицо левее в кадре;
+- переместить лицо правее в кадре;
+- переместить лицо выше в кадре;
+- переместить лицо ниже в кадре;
 - принять обычную рабочую позу.
 
 Клавиши:
@@ -152,9 +151,11 @@ nikolay_left.jpg
 Настройки находятся в `config.py`:
 
 ```python
-CAMERA_INDEX = 0
+USE_EXTERNAL_CAMERA = True
+BUILT_IN_CAMERA_INDEX = 0
+EXTERNAL_CAMERA_INDEX = 1
 ABSENCE_SECONDS_BEFORE_LOCK = 10
-UNLOCK_GRACE_SECONDS = 60
+UNLOCK_GRACE_SECONDS = 30
 CHECK_INTERVAL_SECONDS = 1
 DETECTOR_BACKEND = "mtcnn"
 SELF_TEST_SECONDS = 5
@@ -170,6 +171,9 @@ KNOWN_FACE_PATH = "known_faces/nikolay.jpg"
 
 Главные параметры:
 
+- `USE_EXTERNAL_CAMERA`: `True` — использовать внешнюю камеру, `False` — встроенную.
+- `BUILT_IN_CAMERA_INDEX`: индекс встроенной камеры.
+- `EXTERNAL_CAMERA_INDEX`: индекс внешней камеры.
 - `ABSENCE_SECONDS_BEFORE_LOCK`: сколько секунд подряд владелец должен отсутствовать, чтобы заблокировать Windows.
 - `UNLOCK_GRACE_SECONDS`: защитная пауза после ручной разблокировки; в это время повторная блокировка запрещена.
 - `PAUSE_SECONDS_AFTER_LOCK`: максимальное ожидание после блокировки. `1800` секунд = 30 минут.

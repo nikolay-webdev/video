@@ -15,26 +15,31 @@ FRAME_READ_RETRIES = 20
 FRAME_READ_RETRY_DELAY_SECONDS = 0.2
 
 SCAN_STEPS = [
-    ("front", "Look straight at the camera"),
-    ("monitor", "Look at the monitor naturally"),
-    ("keyboard", "Look down at the keyboard"),
-    ("left", "Turn your head slightly left"),
-    ("right", "Turn your head slightly right"),
-    ("up", "Tilt your head slightly up"),
-    ("glasses_or_normal", "Use your normal working posture"),
+    ("front", "Look straight at the camera", "center"),
+    ("monitor", "Look at the monitor naturally", "center"),
+    ("keyboard", "Look down at the keyboard", "center"),
+    ("head_left", "Turn your head slightly left", "center"),
+    ("head_right", "Turn your head slightly right", "center"),
+    ("head_up", "Tilt your head slightly up", "center"),
+    ("position_left", "Move your face to the left side of the frame", "left"),
+    ("position_right", "Move your face to the right side of the frame", "right"),
+    ("position_high", "Move your face slightly higher in the frame", "high"),
+    ("position_low", "Move your face slightly lower in the frame", "low"),
+    ("normal_working", "Use your normal working posture", "center"),
 ]
 
 
 def open_camera() -> cv2.VideoCapture | None:
+    camera_index = config.get_camera_index()
     backends = [
         ("DirectShow", cv2.CAP_DSHOW),
         ("Default", cv2.CAP_ANY),
     ]
 
     for backend_name, backend in backends:
-        camera = cv2.VideoCapture(config.CAMERA_INDEX, backend)
+        camera = cv2.VideoCapture(camera_index, backend)
         if camera.isOpened():
-            print(f"Camera opened with backend: {backend_name}")
+            print(f"Camera opened with backend: {backend_name}, index: {camera_index}")
             return camera
 
         camera.release()
@@ -42,7 +47,7 @@ def open_camera() -> cv2.VideoCapture | None:
     print(
         "ERROR: Camera is not available.\n"
         f"Check camera connection, close Teams/Zoom/browser camera tabs, "
-        f"and check CAMERA_INDEX={config.CAMERA_INDEX}."
+        f"and check camera index={camera_index}."
     )
     return None
 
@@ -58,10 +63,21 @@ def read_frame(camera: cv2.VideoCapture):
     return False, None
 
 
-def draw_face_template(frame, instruction: str, step_index: int, total_steps: int):
+def get_template_center(width: int, height: int, position: str) -> tuple[int, int]:
+    centers = {
+        "center": (width // 2, height // 2),
+        "left": (width // 3, height // 2),
+        "right": ((width * 2) // 3, height // 2),
+        "high": (width // 2, (height * 2) // 5),
+        "low": (width // 2, (height * 3) // 5),
+    }
+    return centers.get(position, centers["center"])
+
+
+def draw_face_template(frame, instruction: str, step_index: int, total_steps: int, position: str):
     preview = frame.copy()
     height, width = preview.shape[:2]
-    center = (width // 2, height // 2)
+    center = get_template_center(width, height, position)
     axes = (max(90, width // 6), max(130, height // 3))
 
     cv2.ellipse(preview, center, axes, 0, 0, 360, (0, 255, 0), 2, cv2.LINE_AA)
@@ -130,7 +146,7 @@ def run() -> int:
 
     try:
         while step_index < len(SCAN_STEPS):
-            step_name, instruction = SCAN_STEPS[step_index]
+            step_name, instruction, position = SCAN_STEPS[step_index]
             frame_ok, frame = read_frame(camera)
             if not frame_ok:
                 print(
@@ -139,7 +155,7 @@ def run() -> int:
                 )
                 return 1
 
-            preview = draw_face_template(frame, instruction, step_index, len(SCAN_STEPS))
+            preview = draw_face_template(frame, instruction, step_index, len(SCAN_STEPS), position)
             cv2.imshow(WINDOW_NAME, preview)
 
             key = cv2.waitKey(1) & 0xFF
