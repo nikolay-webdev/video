@@ -118,13 +118,21 @@ python main.py
 
 ## Безопасная самопроверка
 
-Перед обычным запуском можно проверить окружение, фото владельца, камеру, чтение кадра и распознавание одного кадра без блокировки Windows и без сохранения снимков:
+Перед обычным запуском можно проверить окружение, фото владельца, камеру, чтение кадров и распознавание в течение нескольких секунд без блокировки Windows и без сохранения снимков:
 
 ```powershell
 python main.py --self-test
 ```
 
 Если VS Code или PowerShell запустит файл через глобальный Python, скрипт всё равно попробует сам перейти на `.venv`.
+
+Если `--self-test` показывает `NO_FACE`, хотя вы сидите перед камерой, можно проверить разные детекторы лиц:
+
+```powershell
+python main.py --diagnose-detectors
+```
+
+Команда покажет, сколько лиц нашёл каждый backend. Если другой backend работает лучше, поменяйте `DETECTOR_BACKEND` в `config.py`.
 
 ## Запуск в VS Code
 
@@ -150,6 +158,8 @@ C:\Users\Student\Downloads\Projects\video_ai\video\face-lock-assistant
 CAMERA_INDEX = 0
 ABSENCE_SECONDS_BEFORE_LOCK = 15
 CHECK_INTERVAL_SECONDS = 1
+DETECTOR_BACKEND = "mtcnn"
+SELF_TEST_SECONDS = 5
 SAVE_UNKNOWN_FACE_SNAPSHOT = True
 UNKNOWN_FACE_SNAPSHOT_COOLDOWN_SECONDS = 10
 PAUSE_SECONDS_AFTER_LOCK = 20
@@ -160,7 +170,10 @@ KNOWN_FACE_PATH = "known_faces/nikolay.jpg"
 
 - `UNKNOWN_FACE_SNAPSHOT_COOLDOWN_SECONDS`: минимальная пауза между снимками неизвестного лица.
 - `PAUSE_SECONDS_AFTER_LOCK`: пауза после вызова блокировки Windows.
+- `DETECTOR_BACKEND`: детектор лиц DeepFace. На текущем ноутбуке диагностика показала, что `mtcnn` видит лицо лучше, чем `opencv` и `ssd`.
+- `SELF_TEST_SECONDS`: сколько секунд длится безопасная самопроверка.
 - `--self-test`: безопасный тестовый режим, который не блокирует Windows и не сохраняет снимки.
+- `--diagnose-detectors`: безопасная диагностика разных детекторов лиц.
 
 ## Статусы
 
