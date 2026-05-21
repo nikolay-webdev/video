@@ -11,7 +11,9 @@
 - Выводит текущий статус в консоль.
 - Ничего не делает, пока владелец находится перед камерой.
 - Блокирует Windows, если владельца нет дольше `ABSENCE_SECONDS_BEFORE_LOCK` секунд.
+- Делает паузу после блокировки, чтобы не продолжать сразу активно обрабатывать кадры.
 - Записывает события с неизвестными лицами в лог и может сохранять снимки.
+- Ограничивает частоту снимков неизвестного лица, чтобы папка `snapshots/` не забивалась.
 
 ## Структура проекта
 
@@ -31,9 +33,11 @@ face-lock-assistant/
 
 ## Важное про версию Python
 
-Для скрипта `capture_owner.py` нужен только OpenCV. Его можно попробовать поставить в Python 3.14.4.
+Для скрипта `capture_owner.py` нужен только OpenCV. Его можно использовать с Python 3.14.4.
 
 Для основного распознавания через DeepFace лучше использовать Python 3.11 или 3.12, потому что DeepFace тянет TensorFlow/tf-keras, а эти пакеты часто отстают по поддержке самых новых версий Python.
+
+В этом проекте уже создано виртуальное окружение `.venv` на Python 3.12. `main.py` умеет автоматически перезапускать себя через `.venv`, даже если VS Code сначала запускает файл через глобальный Python 3.14.
 
 ## Установка для захвата фото
 
@@ -57,12 +61,11 @@ C:\Users\Student\AppData\Local\Programs\Python\Python314\python.exe capture_owne
 ```powershell
 cd C:\Users\Student\Downloads\Projects\video_ai\video\face-lock-assistant
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Если команда `python` не найдена, переустановите Python с сайта python.org и включите опцию **Add python.exe to PATH** во время установки.
+Активация `.venv` через `Activate.ps1` не обязательна. Если PowerShell запрещает запуск скриптов, используйте `.venv\Scripts\python.exe` напрямую.
 
 ## Фото владельца
 
@@ -99,23 +102,31 @@ known_faces/nikolay.jpg
 
 ## Запуск
 
+Обычный запуск:
+
 ```powershell
 python main.py
+```
+
+Если `python` указывает не на `.venv`, `main.py` сам попробует перезапуститься через:
+
+```text
+.\.venv\Scripts\python.exe
 ```
 
 Остановить программу можно сочетанием `Ctrl+C`.
 
 ## Запуск в VS Code
 
-Откройте в VS Code именно папку проекта:
+Можно открыть `main.py` и нажать стандартную кнопку запуска. Если VS Code запустит файл через глобальный Python, `main.py` автоматически перезапустит себя через `.venv`.
+
+Также можно открыть папку проекта:
 
 ```text
 C:\Users\Student\Downloads\Projects\video_ai\video\face-lock-assistant
 ```
 
-В проект добавлены настройки `.vscode`, которые указывают VS Code использовать Python из `.venv`.
-
-Если кнопка запуска все равно использует глобальный Python, откройте командную палитру `Ctrl+Shift+P`, выберите `Python: Select Interpreter` и укажите:
+И выбрать интерпретатор:
 
 ```text
 .\.venv\Scripts\python.exe
@@ -130,8 +141,15 @@ CAMERA_INDEX = 0
 ABSENCE_SECONDS_BEFORE_LOCK = 15
 CHECK_INTERVAL_SECONDS = 1
 SAVE_UNKNOWN_FACE_SNAPSHOT = True
+UNKNOWN_FACE_SNAPSHOT_COOLDOWN_SECONDS = 10
+PAUSE_SECONDS_AFTER_LOCK = 20
 KNOWN_FACE_PATH = "known_faces/nikolay.jpg"
 ```
+
+Что означают новые настройки:
+
+- `UNKNOWN_FACE_SNAPSHOT_COOLDOWN_SECONDS`: минимальная пауза между снимками неизвестного лица.
+- `PAUSE_SECONDS_AFTER_LOCK`: пауза после вызова блокировки Windows.
 
 ## Статусы
 
@@ -161,9 +179,11 @@ snapshots/
 4. Запустите программу с камерой. Камера должна открыться, а в консоли должны появляться статусы.
 5. Сядьте перед камерой. Статус должен стать `OWNER_PRESENT`.
 6. Выйдите из кадра. Через 15 секунд Windows должен заблокироваться.
-7. Попросите другого человека встать перед камерой. Программа должна записать событие в лог и сохранить снимок, если сохранение снимков включено.
-8. Оставьте программу работать 10-15 минут.
-9. Проверьте ложные срабатывания при плохом освещении, в очках и при повороте головы.
+7. После блокировки программа должна сделать паузу на `PAUSE_SECONDS_AFTER_LOCK` секунд.
+8. Попросите другого человека встать перед камерой. Программа должна записать событие в лог и сохранить снимок, если сохранение снимков включено.
+9. При длительном неизвестном лице снимки должны сохраняться не чаще, чем раз в `UNKNOWN_FACE_SNAPSHOT_COOLDOWN_SECONDS` секунд.
+10. Оставьте программу работать 10-15 минут.
+11. Проверьте ложные срабатывания при плохом освещении, в очках и при повороте головы.
 
 ## Ограничения
 
