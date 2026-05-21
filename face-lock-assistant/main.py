@@ -6,11 +6,12 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from time import sleep
 
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_VENV_PYTHON = BASE_DIR / ".venv" / "Scripts" / "python.exe"
+CHECK_ENV_FLAG = "--check-env"
+SELF_TEST_FLAG = "--self-test"
 
 
 def relaunch_with_project_venv() -> None:
@@ -50,7 +51,7 @@ except ModuleNotFoundError as error:
 import config
 
 
-if "--check-env" in sys.argv:
+if CHECK_ENV_FLAG in sys.argv:
     print(f"Environment OK: {sys.executable}", flush=True)
     raise SystemExit(0)
 
@@ -121,7 +122,7 @@ def read_frame(camera: cv2.VideoCapture):
         if frame_ok:
             return True, frame
 
-        sleep(FRAME_READ_RETRY_DELAY_SECONDS)
+        time.sleep(FRAME_READ_RETRY_DELAY_SECONDS)
 
     return False, None
 
@@ -258,7 +259,7 @@ def run() -> int:
                     last_unknown_snapshot_at = time.monotonic()
                     logging.warning("Unknown face detected. Snapshot: %s", snapshot_path or "disabled")
                 else:
-                    logging.warning("Unknown face detected. Snapshot skipped by cooldown.")
+                    logging.debug("Unknown face detected. Snapshot skipped by cooldown.")
 
             absent_seconds = time.monotonic() - owner_last_seen_at
             print_status(status, absent_seconds, snapshot_path)
@@ -283,5 +284,50 @@ def run() -> int:
         cv2.destroyAllWindows()
 
 
+def run_self_test() -> int:
+    print(f"Environment OK: {sys.executable}")
+    print(f"Known face path: {KNOWN_FACE_PATH}")
+    print(f"Camera index: {config.CAMERA_INDEX}")
+    print("Self-test does not lock Windows and does not save snapshots.")
+
+    setup_directories()
+    setup_logging()
+
+    if not validate_known_face():
+        return 1
+
+    camera = open_camera()
+    if camera is None:
+        return 1
+
+    try:
+        frame_ok, frame = read_frame(camera)
+        if not frame_ok:
+            print("ERROR: Failed to read a test frame from camera.")
+            return 1
+
+        height, width = frame.shape[:2]
+        print(f"Camera frame OK: {width}x{height}")
+
+        faces = extract_detected_faces(frame)
+        print(f"Detected faces: {len(faces)}")
+
+        if not faces:
+            print("Recognition status: NO_FACE")
+        elif is_owner_present(faces):
+            print("Recognition status: OWNER_PRESENT")
+        else:
+            print("Recognition status: UNKNOWN_FACE")
+
+        print("Self-test finished.")
+        return 0
+    finally:
+        camera.release()
+        cv2.destroyAllWindows()
+
+
 if __name__ == "__main__":
+    if SELF_TEST_FLAG in sys.argv:
+        raise SystemExit(run_self_test())
+
     raise SystemExit(run())
