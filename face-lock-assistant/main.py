@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 import time
+import ctypes
 from datetime import datetime
 from pathlib import Path
 
@@ -35,6 +37,13 @@ def relaunch_with_project_venv() -> None:
 
 relaunch_with_project_venv()
 
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+
+if CHECK_ENV_FLAG in sys.argv:
+    print(f"Environment OK: {sys.executable}", flush=True)
+    raise SystemExit(0)
+
 try:
     import cv2
     from deepface import DeepFace
@@ -52,11 +61,6 @@ except ModuleNotFoundError as error:
 import config
 
 
-if CHECK_ENV_FLAG in sys.argv:
-    print(f"Environment OK: {sys.executable}", flush=True)
-    raise SystemExit(0)
-
-
 LOGS_DIR = BASE_DIR / "logs"
 SNAPSHOTS_DIR = BASE_DIR / "snapshots"
 KNOWN_FACE_PATH = BASE_DIR / config.KNOWN_FACE_PATH
@@ -68,6 +72,7 @@ MIN_FACE_CONFIDENCE = 0.5
 FRAME_READ_RETRIES = 5
 FRAME_READ_RETRY_DELAY_SECONDS = 0.2
 DIAGNOSTIC_DETECTOR_BACKENDS = ["opencv", "ssd", "mtcnn", "retinaface"]
+DESKTOP_SWITCHDESKTOP = 0x0100
 
 
 def setup_directories() -> None:
@@ -131,6 +136,45 @@ def read_frame(camera: cv2.VideoCapture):
 def lock_windows_screen() -> None:
     logging.info("Owner absent too long. Locking Windows workstation.")
     subprocess.run(["rundll32.exe", "user32.dll,LockWorkStation"], check=False)
+
+
+def is_workstation_unlocked() -> bool:
+    user32 = ctypes.windll.user32
+    input_desktop = user32.OpenInputDesktop(0, False, DESKTOP_SWITCHDESKTOP)
+    if not input_desktop:
+        return False
+
+    try:
+        return bool(user32.SwitchDesktop(input_desktop))
+    finally:
+        user32.CloseDesktop(input_desktop)
+
+
+def wait_after_lock_until_unlock() -> bool:
+    print(
+        "Waiting until Windows is unlocked "
+        f"(max {config.PAUSE_SECONDS_AFTER_LOCK}s)."
+    )
+
+    wait_started_at = time.monotonic()
+    last_status_print_at = None
+
+    while True:
+        elapsed_seconds = time.monotonic() - wait_started_at
+        if elapsed_seconds >= config.PAUSE_SECONDS_AFTER_LOCK:
+            print("Lock wait timeout reached. Monitoring will resume.")
+            return False
+
+        if is_workstation_unlocked():
+            print("Windows is unlocked. Monitoring resumed.")
+            return True
+
+        if should_print_locked_wait(last_status_print_at):
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            print(f"[{timestamp}] LOCKED_WAIT | lock_wait: {elapsed_seconds:.0f}s")
+            last_status_print_at = time.monotonic()
+
+        time.sleep(config.LOCK_STATE_CHECK_INTERVAL_SECONDS)
 
 
 def extract_detected_faces(frame) -> list[dict]:
@@ -219,6 +263,14 @@ def print_status(status: str, absent_seconds: float, snapshot_path: Path | None 
     print(message)
 
 
+def should_print_locked_wait(last_print_at: float | None) -> bool:
+    if last_print_at is None:
+        return True
+
+    seconds_since_last_print = time.monotonic() - last_print_at
+    return seconds_since_last_print >= config.LOCKED_STATUS_PRINT_INTERVAL_SECONDS
+
+
 def run() -> int:
     setup_directories()
     setup_logging()
@@ -232,6 +284,7 @@ def run() -> int:
 
     owner_last_seen_at = time.monotonic()
     last_unknown_snapshot_at = None
+    last_locked_wait_print_at = None
     lock_already_requested = False
 
     print("Face Lock Assistant started. Press Ctrl+C to stop.")
@@ -256,6 +309,7 @@ def run() -> int:
             elif is_owner_present(faces):
                 status = "OWNER_PRESENT"
                 owner_last_seen_at = time.monotonic()
+                last_locked_wait_print_at = None
                 lock_already_requested = False
             else:
                 status = "UNKNOWN_FACE"
@@ -267,7 +321,13 @@ def run() -> int:
                     logging.debug("Unknown face detected. Snapshot skipped by cooldown.")
 
             absent_seconds = time.monotonic() - owner_last_seen_at
-            print_status(status, absent_seconds, snapshot_path)
+
+            if lock_already_requested and status != "OWNER_PRESENT":
+                if should_print_locked_wait(last_locked_wait_print_at):
+                    print_status("LOCKED_WAIT", absent_seconds, snapshot_path)
+                    last_locked_wait_print_at = time.monotonic()
+            else:
+                print_status(status, absent_seconds, snapshot_path)
 
             if (
                 absent_seconds >= config.ABSENCE_SECONDS_BEFORE_LOCK
@@ -276,8 +336,12 @@ def run() -> int:
                 print("Owner absent too long. Locking Windows screen.")
                 lock_windows_screen()
                 lock_already_requested = True
-                print(f"Paused for {config.PAUSE_SECONDS_AFTER_LOCK}s after locking.")
-                time.sleep(config.PAUSE_SECONDS_AFTER_LOCK)
+                last_locked_wait_print_at = time.monotonic()
+                unlocked = wait_after_lock_until_unlock()
+                if unlocked:
+                    owner_last_seen_at = time.monotonic()
+                    last_locked_wait_print_at = None
+                    lock_already_requested = False
 
             time.sleep(config.CHECK_INTERVAL_SECONDS)
     except KeyboardInterrupt:
