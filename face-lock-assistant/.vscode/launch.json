@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Face Lock Assistant",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}\\main.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+    },
+    {
+      "name": "Capture Owner Photo",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}\\capture_owner.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+    }
+  ]
+}
