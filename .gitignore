@@ -203,15 +203,25 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
-# Face Lock Assistant runtime/user data
-.venv/
-logs/*
-!logs/.gitkeep
-snapshots/*
+# Face Lock Assistant - private runtime and biometric data
+# Never commit reference photos or unknown-person captures (including subfolders).
+known_faces/
+snapshots/**
 !snapshots/.gitkeep
-known_faces/*.jpg
-known_faces/*.jpeg
-known_faces/*.png
+
+# Application logs and runtime output
+logs/**
+!logs/.gitkeep
+
+# Local secrets and credentials
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
 
 # Ruff stuff:
 .ruff_cache/
